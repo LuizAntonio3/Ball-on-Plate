@@ -3,6 +3,16 @@
 #include "controller.h"
 #include "kalmanFilter.h"
 #include "stateSpaceMatrices.h"
+#include "network.h"
+#include "etm.h"
+#include "parsers.h"
+
+const char* wifiSSID = "Nidavellir 2G";
+const char* wifiPassword = "Mc-Mp4/4@88!.";
+const char* serverIP = "192.168.1.27";
+const int port = 23;
+
+Network network(wifiSSID, wifiPassword, serverIP, port);
 
 ServoControl servos(23, 19);
 TouchScreen ts(27, 26, 32, 33, 25);
@@ -32,12 +42,25 @@ float uDegreeY = 0;
 float referenceX = 0;
 float referenceY = 0;
 
-Matrix<2, 1> statesX = {0, 0};
-Matrix<2, 1> statesY = {0, 0};
+Matrix<2, 1> statesX   = {0, 0};
+Matrix<2, 1> statesY   = {0, 0};
+
+// Event triggering related
+Matrix<2, 1> statesXLt = {0, 0};
+Matrix<2, 1> statesYLt = {0, 0};
+const float lambda = .5;
+const float theta = 1;
+const float phi = 0.0; // TODO: check this
+float GammaX = 0.0;
+float etaX = 0.0;
+float GammaY = 0.0;
+float etaY = 0.0;
+unsigned long lastUpdateTime = 0;
 
 void setup() {
   delay(500);
   Serial.begin(1000000);
+  network.init();
   delay(500);
   ts.setSamplingTime(35);
   servos.startPosition();
@@ -48,6 +71,7 @@ void setup() {
 #include "printInfo.h" 
 
 void loop() {
+  network.keepAlive(); // best placed in an isolated task
   coords = ts.getCoordinates();
  
   if(ts.screenUpdated()){
@@ -60,12 +84,31 @@ void loop() {
     statesX = xFilter.kalman(uX, posX);
     statesY = yFilter.kalman(uY, posY);
 
-    uX = xController.controlLaw(statesX);   
+    // bool etmX = ETM(statesX, statesXLt, phi, lambda, theta, &etaX, &GammaX);
+    // bool etmY = ETM(statesY, statesYLt, phi, lambda, theta, &etaY, &GammaY);
+
+    // if(!etmX && !etmY)
+    //   return;
+
+    char data[60];
+    sprintf(data, "<%.4f,%.4f,%.4f,%.4f,%.4f>\0", statesX(0), statesX(1), statesY(0), statesY(1), millis() - lastUpdateTime);
+    if(!network.sendData(data))
+      return; // failed to send data
+    
+    data[0] = '\0'; // if this causes any bugs consider erasing the complete buffer
+    if(!network.readData(data))
+      return; // failed to receive new data
+
+    // ETM_UpdateLt(statesX, statesXLt, &GammaX);
+    // ETM_UpdateLt(statesY, statesYLt, &GammaY);
+    lastUpdateTime = millis();
+    
+    parseUxUyFromString(data, &uX, &uY);
+    
     uDegreeX = rad2deg(uX);
     saturate(&uDegreeX, -25, 25);
     uX = deg2rad(uDegreeX);
 
-    uY = yController.controlLaw(statesY);   
     uDegreeY = rad2deg(uY);
     saturate(&uDegreeY, -25, 25);
     uY = deg2rad(uDegreeY);
