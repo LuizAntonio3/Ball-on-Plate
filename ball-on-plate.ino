@@ -7,9 +7,9 @@
 #include "etm.h"
 #include "parsers.h"
 
-const char* wifiSSID = "Nidavellir 2G";
-const char* wifiPassword = "Mc-Mp4/4@88!.";
-const char* serverIP = "192.168.1.27";
+const char* wifiSSID = "SSID";
+const char* wifiPassword = "PASSWORD";
+const char* serverIP = "IP";
 const int port = 23;
 
 Network network(wifiSSID, wifiPassword, serverIP, port);
@@ -84,11 +84,11 @@ void loop() {
     statesX = xFilter.kalman(uX, posX);
     statesY = yFilter.kalman(uY, posY);
 
-    // bool etmX = ETM(statesX, statesXLt, phi, lambda, theta, &etaX, &GammaX);
-    // bool etmY = ETM(statesY, statesYLt, phi, lambda, theta, &etaY, &GammaY);
+    bool etmX = ETM(&statesX, &statesXLt, phi, lambda, theta, &etaX, &GammaX);
+    bool etmY = ETM(&statesY, &statesYLt, phi, lambda, theta, &etaY, &GammaY);
 
-    // if(!etmX && !etmY)
-    //   return;
+    if(!etmX && !etmY)
+      return;
 
     char data[60];
     sprintf(data, "<%.4f,%.4f,%.4f,%.4f,%.4f>\0", statesX(0), statesX(1), statesY(0), statesY(1), millis() - lastUpdateTime);
@@ -99,10 +99,10 @@ void loop() {
     if(!network.readData(data))
       return; // failed to receive new data
 
-    // ETM_UpdateLt(statesX, statesXLt, &GammaX);
-    // ETM_UpdateLt(statesY, statesYLt, &GammaY);
+    ETM_UpdateLt(&statesX, &statesXLt, &GammaX);
+    ETM_UpdateLt(&statesY, &statesYLt, &GammaY);
     lastUpdateTime = millis();
-    
+        
     parseUxUyFromString(data, &uX, &uY);
     
     uDegreeX = rad2deg(uX);
