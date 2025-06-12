@@ -1,14 +1,22 @@
 #include "controller.h"
 
 Controller::Controller(Matrix<1, systemOrder> gains){
-   this->K = gains;
+  this->controllerType = ControllerType::STATE_FEEDBACK;
+  this->K = gains;
 };
+
+Controller::Controller(std::function<float(Matrix<systemOrder, 1>, float*, float*)> func){
+  this->controllerType = ControllerType::DIFFERENCE;
+  this->diffEquationsControlFunc = func;
+}
 
 Controller::~Controller(){};
 
 float Controller::controlLaw(Matrix<systemOrder,1> currentState){
-  
-  return (this->K * currentState)(0);
+  if(controllerType == ControllerType::STATE_FEEDBACK)
+    return (this->K * currentState)(0);
+  else
+    return this->diffEquationsControlFunc(currentState, e, u);
 }
 
 void saturate(float* input, float lowerLimit, float upperLimit){

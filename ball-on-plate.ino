@@ -3,6 +3,13 @@
 #include "controller.h"
 #include "kalmanFilter.h"
 #include "stateSpaceMatrices.h"
+#include <functional>
+
+#define USE_STATE_FEEDBACK
+
+float difEqControl(Matrix<systemOrder,1> currentState, float* e, float* u);
+
+std::function<float(Matrix<systemOrder, 1>, float*, float*)> diff = difEqControl;
 
 ServoControl servos(23, 19);
 TouchScreen ts(27, 26, 32, 33, 25);
@@ -12,10 +19,15 @@ screenCoordinatesCm coordsCm;
 KalmanFilter xFilter(sys.A, sys.B, sys.C, 0.01, 200, 150);
 KalmanFilter yFilter(sys.A, sys.B, sys.C, 0.01, 200, 150);
 
-Matrix<1,2> hInfSatGains = {17.8954, 10.0515};
+Matrix<1,2> stateFeedbackGains = {17.8954, 10.0515};
 
-Controller xController(hInfSatGains);
-Controller yController(hInfSatGains);
+#ifdef USE_STATE_FEEDBACK
+Controller xController(stateFeedbackGains);
+Controller yController(stateFeedbackGains);
+#else
+Controller xController(diff);
+Controller yController(diff);
+#endif
 
 float angleX = 0;
 float angleY = 0;
@@ -34,6 +46,28 @@ float referenceY = 0;
 
 Matrix<2, 1> statesX = {0, 0};
 Matrix<2, 1> statesY = {0, 0};
+
+float difEqControl(Matrix<2,1> currentState, float* e, float* u) {
+  /*
+    e -> é um vetor com tamanho 3 -> (n, n-1, n-2);
+    u -> é um vetor com tamanho 3 -> (n, n-1, n-2);
+
+    CUIDADO: EXCEDENDO A DIMENSÃO VAI CRASHAR O CODIGO;
+  */
+
+  for (int i = 2; i > 0; i--) {
+    e[i] = e[i - 1];
+    u[i] = u[i - 1];
+  }
+
+  // Cálculo do erro
+  e[0] = currentState(0); // Usando somente o primeiro estado
+
+  // Cálculo do sinal de controle <----- ALTERAR A LEI DE CONTROLE AQUI
+  u[0] = 0;
+
+  return u[0];
+}
 
 void setup() {
   delay(500);
@@ -59,13 +93,13 @@ void loop() {
 
     statesX = xFilter.kalman(uX, posX);
     statesY = yFilter.kalman(uY, posY);
-
-    uX = xController.controlLaw(statesX);   
+    
+    uX = xController.controlLaw(statesX);
     uDegreeX = rad2deg(uX);
     saturate(&uDegreeX, -25, 25);
     uX = deg2rad(uDegreeX);
 
-    uY = yController.controlLaw(statesY);   
+    uY = yController.controlLaw(statesY);
     uDegreeY = rad2deg(uY);
     saturate(&uDegreeY, -25, 25);
     uY = deg2rad(uDegreeY);
